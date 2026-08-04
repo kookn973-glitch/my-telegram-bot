@@ -16,7 +16,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     welcome_text = (
         f"مرحباً بك {user.first_name} في بوت التحميل الشامل! 🚀\n\n"
-        "الرجاء اختيار المنصة التي تريد التحميل منها، أو قم بإرسال الرابط مباشر:"
+        "الرجاء اختيار المنصة التي تريد التحميل منها، أو قم بإرسال الرابط مباشرة:"
     )
     
     keyboard = InlineKeyboardMarkup([
@@ -25,7 +25,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("👻 سناب شات", callback_data="platform_snapchat")
         ],
         [
-            InlineKeyboardButton("📺 يوتيوب / إنستغرام", callback_data="platform_others")
+            InlineKeyboardButton("📸 إنستغرام", callback_data="platform_instagram"),
+            InlineKeyboardButton("📘 فيسبوك", callback_data="platform_facebook")
+        ],
+        [
+            InlineKeyboardButton("📺 يوتيوب", callback_data="platform_youtube")
         ]
     ])
     
@@ -39,7 +43,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     platform_names = {
         "platform_tiktok": "تيك توك",
         "platform_snapchat": "سناب شات",
-        "platform_others": "يوتيوب أو إنستغرام"
+        "platform_instagram": "إنستغرام",
+        "platform_facebook": "فيسبوك",
+        "platform_youtube": "يوتيوب"
     }
     
     selected = platform_names.get(query.data, "المنصة المطلوبة")
@@ -57,12 +63,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     output_template = "downloaded_video_%(id)s.%(ext)s"
     
-    # دالة تتبع نسبة التحميل
     last_update_time = [0]
     def hook(d):
         if d['status'] == 'downloading':
             current_time = time.time()
-            # تحديث الرسالة كل 3 ثوانٍ لتجنب حظر تليجرام بسبب كثرة التحديثات
             if current_time - last_update_time[0] > 3:
                 try:
                     p = d.get('_percent_str', '0%').strip()
@@ -81,11 +85,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
+    # خيارات مخصصة لتحسين الجودة وتجاوز الحقوق قدر الإمكان
     ydl_opts = {
         'outtmpl': output_template,
         'format': 'best',
         'noplaylist': True,
         'progress_hooks': [hook],
+        'extractor_args': {
+            'snapchat': {'format': 'video'},
+            'instagram': {'format': 'video'},
+            'tiktok': {'api_hostname': 'api16-normal-c-useast1a.tiktokv.com'}
+        }
     }
 
     filename = None
@@ -100,11 +110,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="📤 جاري رفع الفيديو وإرساله..."
         )
 
-        # إرسال الفيديو للمستخدم
         with open(filename, 'rb') as video_file:
             await update.message.reply_video(video=video_file)
         
-        # حذف رسالة الحالة
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
 
     except Exception as e:
@@ -115,7 +123,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # تنظيف الملف من السيرفر بعد الانتهاء
     if filename and os.path.exists(filename):
         try:
             os.remove(filename)
