@@ -12,21 +12,18 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # توكن البوت الخاص بك
 TOKEN = "8935530372:AAFoiz8kfSkbJ5MQ62rWwKyKFZVXn-1Lq8E"
 
-# معرف القناة الخاصة بك (يجب أن يكون البوت مشرفاً في القناة)
-# مثال: CHANNEL_USERNAME = "@YourChannelUsername" أو اتركها معرف رقمي سالب
+# معرف قناتك الأساسي للاشتراك الإجباري
 CHANNEL_USERNAME = "@Wolves_Sudan" 
 
 # دالة التحقق مما إذا كان المستخدم مشتركاً في القناة
 async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        # التحقق مما إذا كانت حالة العضوية تشير إلى أنه مشترك (عضو، مشرف، أو مالك)
         if member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
             return True
         return False
     except Exception as e:
         logging.error(f"Error checking subscription: {e}")
-        # في حال حدث خطأ (مثل عدم إضافة البوت مشرفاً في القناة)، يفضل السماح مؤقتاً أو التعامل معه
         return False
 
 def is_tiktok_url(url: str) -> bool:
@@ -36,7 +33,6 @@ def is_tiktok_url(url: str) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # التحقق من الاشتراك أولاً عند بدء الاستخدام
     is_subscribed = await check_subscription(user.id, context)
     
     if not is_subscribed:
@@ -61,13 +57,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("قناة التحديثات", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"),
-            InlineKeyboardButton("تواصل مع المطور", url="https://t.me/YourUsername")
+            InlineKeyboardButton("تواصل مع المطور", url="https://t.me/YourUsername") # استبدل YourUsername بمعرفك
         ]
     ])
     
     await update.message.reply_text(welcome_text, reply_markup=keyboard)
 
-# دالة التعامل مع زر التحقق من الاشتراك
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -77,9 +72,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_subscribed = await check_subscription(user_id, context)
         
         if is_subscribed:
-            await query.message.delete()
+            try:
+                await query.message.delete()
+            except:
+                pass
+                
             welcome_text = (
-                f"شكراً لاشتراكك في القناة.\n\n"
+                "شكراً لاشتراكك في القناة.\n\n"
                 "يمكنك الآن إرسال أي رابط تيك توك وسيتم تحميله فوراً."
             )
             keyboard = InlineKeyboardMarkup([
@@ -95,7 +94,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # التحقق من الاشتراك قبل معالجة أي رابط يرسله المستخدم
     is_subscribed = await check_subscription(user.id, context)
     if not is_subscribed:
         keyboard = InlineKeyboardMarkup([
@@ -171,8 +169,8 @@ def main():
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("جاري تشغيل بوت تيك توك مع نظام الاشتراك الإجباري...")
+    print("جاري تشغيل بوت تيك توك...")
     application.run_polling()
 
 if __name__ == "__main__":
-    main>
+    main()
