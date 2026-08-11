@@ -1,7 +1,8 @@
 import os
 import logging
 import time
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import re
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatMember
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import yt_dlp
 
@@ -11,57 +12,115 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # توكن البوت الخاص بك
 TOKEN = "8935530372:AAFoiz8kfSkbJ5MQ62rWwKyKFZVXn-1Lq8E"
 
-# دالة رسالة البداية مع الأزرار الشفافة
+# معرف القناة الخاصة بك (يجب أن يكون البوت مشرفاً في القناة)
+# مثال: CHANNEL_USERNAME = "@YourChannelUsername" أو اتركها معرف رقمي سالب
+CHANNEL_USERNAME = "@Wolves_Sudan" 
+
+# دالة التحقق مما إذا كان المستخدم مشتركاً في القناة
+async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    try:
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        # التحقق مما إذا كانت حالة العضوية تشير إلى أنه مشترك (عضو، مشرف، أو مالك)
+        if member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Error checking subscription: {e}")
+        # في حال حدث خطأ (مثل عدم إضافة البوت مشرفاً في القناة)، يفضل السماح مؤقتاً أو التعامل معه
+        return False
+
+def is_tiktok_url(url: str) -> bool:
+    tiktok_patterns = [r"tiktok\.com", r"vt\.tiktok\.com", r"vm\.tiktok\.com"]
+    return any(re.search(pattern, url) for pattern in tiktok_patterns)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    
+    # التحقق من الاشتراك أولاً عند بدء الاستخدام
+    is_subscribed = await check_subscription(user.id, context)
+    
+    if not is_subscribed:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("اشترك في القناة", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}")],
+            [InlineKeyboardButton("تحقق من الاشتراك", callback_data="check_sub")]
+        ])
+        await update.message.reply_text(
+            f"مرحباً بك {user.first_name}.\n\n"
+            "عذراً، يجب عليك الاشتراك في قناة البوت أولاً لتمكين الخدمة.\n\n"
+            "يرجى الاشتراك ثم الضغط على زر التحقق أدناه.",
+            reply_markup=keyboard
+        )
+        return
+
     welcome_text = (
-        f"مرحباً بك {user.first_name} في بوت التحميل الشامل! 🚀\n\n"
-        "الرجاء اختيار المنصة التي تريد التحميل منها، أو قم بإرسال الرابط مباشرة:"
+        f"مرحباً بك {user.first_name} في بوت تحميل فيديوهات تيك توك.\n\n"
+        "يمكنك إرسال أي رابط فيديو أو منشور تيك توك وسيقوم البوت بتحميله فوراً وبأعلى جودة متاحة.\n\n"
+        "يرجى لصق الرابط في المحادثة للبدء."
     )
     
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🎵 تيك توك", callback_data="platform_tiktok"),
-            InlineKeyboardButton("👻 سناب شات", callback_data="platform_snapchat")
-        ],
-        [
-            InlineKeyboardButton("📸 إنستغرام", callback_data="platform_instagram"),
-            InlineKeyboardButton("📘 فيسبوك", callback_data="platform_facebook")
-        ],
-        [
-            InlineKeyboardButton("📺 يوتيوب", callback_data="platform_youtube")
+            InlineKeyboardButton("قناة التحديثات", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"),
+            InlineKeyboardButton("تواصل مع المطور", url="https://t.me/YourUsername")
         ]
     ])
     
     await update.message.reply_text(welcome_text, reply_markup=keyboard)
 
-# دالة التعامل مع ضغط الأزرار
+# دالة التعامل مع زر التحقق من الاشتراك
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    platform_names = {
-        "platform_tiktok": "تيك توك",
-        "platform_snapchat": "سناب شات",
-        "platform_instagram": "إنستغرام",
-        "platform_facebook": "فيسبوك",
-        "platform_youtube": "يوتيوب"
-    }
-    
-    selected = platform_names.get(query.data, "المنصة المطلوبة")
-    await query.message.reply_text(f"✅ تم اختيار: **{selected}**.\nالآن قم بإرسال الرابط لنبدأ التحميل فوراً 📥")
+    if query.data == "check_sub":
+        user_id = query.from_user.id
+        is_subscribed = await check_subscription(user_id, context)
+        
+        if is_subscribed:
+            await query.message.delete()
+            welcome_text = (
+                f"شكراً لاشتراكك في القناة.\n\n"
+                "يمكنك الآن إرسال أي رابط تيك توك وسيتم تحميله فوراً."
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("قناة التحديثات", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"),
+                    InlineKeyboardButton("تواصل مع المطور", url="https://t.me/YourUsername")
+                ]
+            ])
+            await query.message.reply_text(welcome_text, reply_markup=keyboard)
+        else:
+            await query.answer("لم تقم بالاشتراك في القناة بعد. يرجى الاشتراك والمحاولة مرة أخرى.", show_alert=True)
 
-# دالة استقبال الرابط وتحديث نسبة التحميل وإرسال الفيديو
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    # التحقق من الاشتراك قبل معالجة أي رابط يرسله المستخدم
+    is_subscribed = await check_subscription(user.id, context)
+    if not is_subscribed:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("اشترك في القناة", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}")],
+            [InlineKeyboardButton("تحقق من الاشتراك", callback_data="check_sub")]
+        ])
+        await update.message.reply_text(
+            "عذراً، يجب عليك الاشتراك في قناة البوت أولاً لتمكن من استخدام خدمات التحميل.",
+            reply_markup=keyboard
+        )
+        return
+
     url = update.message.text.strip()
     
     if not url.startswith("http"):
-        await update.message.reply_text("❌ الرجاء إرسال رابط صحيح يبدأ بـ http أو https.")
+        await update.message.reply_text("عذراً، يرجى إرسال رابط صحيح يبدأ بـ http أو https.")
         return
 
-    status_msg = await update.message.reply_text("⏳ جاري بدء التحميل...")
+    if not is_tiktok_url(url):
+        await update.message.reply_text("عذراً، هذا البوت مخصص لفيديوهات تيك توك فقط. يرجى إرسال رابط تيك توك صحيح.")
+        return
 
-    output_template = "downloaded_video_%(id)s.%(ext)s"
+    status_msg = await update.message.reply_text("جاري الاتصال بالخادم وبدء عملية التحميل...")
+
+    output_template = "tiktok_video_%(id)s.%(ext)s"
     
     last_update_time = [0]
     def hook(d):
@@ -72,31 +131,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     p = d.get('_percent_str', '0%').strip()
                     speed = d.get('_speed_str', 'N/A').strip()
                     eta = d.get('_eta_str', 'N/A').strip()
-                    
-                    text = f"📥 **جاري التحميل...**\n\n📊 النسبة: `{p}`\n⚡ السرعة: `{speed}`\n⏱️ الوقت المتبقي: `{eta}`"
-                    
-                    context.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
-                        message_id=status_msg.message_id,
-                        text=text,
-                        parse_mode="Markdown"
+                    text = f"جاري تحميل الفيديو...\n\nالنسبة: {p}\nالسرعة: {speed}\nالوقت المتبقي: {eta}"
+                    context.application.create_task(
+                        context.bot.edit_message_text(chat_id=update.effective_chat.id, message_id=status_msg.message_id, text=text)
                     )
                     last_update_time[0] = current_time
                 except Exception:
                     pass
 
-    # خيارات مخصصة لتحسين الجودة وتجاوز الحقوق قدر الإمكان
-    ydl_opts = {
-        'outtmpl': output_template,
-        'format': 'best',
-        'noplaylist': True,
-        'progress_hooks': [hook],
-        'extractor_args': {
-            'snapchat': {'format': 'video'},
-            'instagram': {'format': 'video'},
-            'tiktok': {'api_hostname': 'api16-normal-c-useast1a.tiktokv.com'}
-        }
-    }
+    ydl_opts = {'outtmpl': output_template, 'format': 'best', 'noplaylist': True, 'progress_hooks': [hook]}
 
     filename = None
     try:
@@ -104,11 +147,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=status_msg.message_id,
-            text="📤 جاري رفع الفيديو وإرساله..."
-        )
+        await context.bot.edit_message_text(chat_id=update.effective_chat.id, message_id=status_msg.message_id, text="جاري رفع الفيديو وإرساله إليك...")
 
         with open(filename, 'rb') as video_file:
             await update.message.reply_video(video=video_file)
@@ -117,27 +156,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await update.message.reply_text("❌ عذراً، حدث خطأ أثناء التحميل. تأكد من صحة الرابط أو جرب رابطاً آخر.")
-        try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
-        except:
-            pass
+        await update.message.reply_text("عذراً، حدث خطأ أثناء تحميل الفيديو. قد يكون الرابط غير صالح.")
+        try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
+        except: pass
 
     if filename and os.path.exists(filename):
-        try:
-            os.remove(filename)
-        except:
-            pass
+        try: os.remove(filename)
+        except: pass
 
 def main():
     application = Application.builder().token(TOKEN).build()
-
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("🤖 جاري تشغيل بوت تليجرام الشامل...")
+    
+    print("جاري تشغيل بوت تيك توك مع نظام الاشتراك الإجباري...")
     application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    main>
