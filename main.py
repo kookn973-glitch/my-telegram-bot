@@ -1,7 +1,6 @@
 import os
 import logging
 import time
-import re
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatMember
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import yt_dlp
@@ -10,11 +9,11 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = "8935530372:AAFoiz8kfSkbJ5MQ62rWwKyKFZVXn-1Lq8E"
 
-# معرف قناتك العام (تأكد أن القناة عامة ولها معرف يبدأ بـ @)
+# معرف قناتك الأساسي للاشتراك الإجباري
 CHANNEL_USERNAME = "@Wolves_Sudan" 
 
 # ضع معرف تليجرام الخاص بك هنا بدون @ (مثال: myname)
-DEVELOPER_USERNAME = "banda_sudan"
+DEVELOPER_USERNAME = "banda_sudan" 
 
 async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
@@ -25,10 +24,6 @@ async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -
     except Exception as e:
         logging.error(f"Error checking subscription: {e}")
         return False
-
-def is_tiktok_url(url: str) -> bool:
-    tiktok_patterns = [r"tiktok\.com", r"vt\.tiktok\.com", r"vm\.tiktok\.com"]
-    return any(re.search(pattern, url) for pattern in tiktok_patterns)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -50,8 +45,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     welcome_text = (
         f"مرحباً بك {user.first_name}.\n\n"
-        "هذا البوت مخصص لتحميل فيديوهات تيك توك.\n\n"
-        "قم بإرسال رابط الفيديو للبدء."
+        "هذا البوت مخصص لتحميل الفيديوهات من جميع المنصات بأعلى جودة أصلية.\n\n"
+        "قم بإرسال الرابط للبدء."
     )
     
     keyboard = InlineKeyboardMarkup([
@@ -79,7 +74,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             welcome_text = (
                 "تم التحقق من الاشتراك بنجاح.\n\n"
-                "يمكنك الآن إرسال رابط تيك توك للتحميل."
+                "يمكنك الآن إرسال أي رابط للتحميل."
             )
             keyboard = InlineKeyboardMarkup([
                 [
@@ -112,13 +107,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("يرجى إرسال رابط صحيح يبدأ بـ http أو https.")
         return
 
-    if not is_tiktok_url(url):
-        await update.message.reply_text("عذراً، هذا البوت مخصص لفيديوهات تيك توك فقط.")
-        return
+    status_msg = await update.message.reply_text("جاري التحضير للتحميل...")
 
-    status_msg = await update.message.reply_text("جاري تحميل الفيديو...")
-
-    output_template = "tiktok_video_%(id)s.%(ext)s"
+    output_template = "downloaded_video_%(id)s.%(ext)s"
     
     last_update_time = [0]
     def hook(d):
@@ -137,13 +128,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
-    ydl_opts = {'outtmpl': output_template, 'format': 'best', 'noplaylist': True, 'progress_hooks': [hook]}
+    # إعدادات yt_dlp لاختيار أفضل جودة متاحة وتجنب قوائم التشغيل الطويلة
+    ydl_opts = {
+        'outtmpl': output_template,
+        'format': 'bestvideo+bestaudio/best',
+        'merge_output_format': 'mp4',
+        'noplaylist': True,
+        'progress_hooks': [hook],
+    }
 
     filename = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
+            # إذا تم دمج الفيديو بصيغة أخرى، نتأكد من امتداد mp4 إن وجد
+            base, _ = os.path.splitext(filename)
+            mp4_filename = base + ".mp4"
+            if os.path.exists(mp4_filename):
+                filename = mp4_filename
 
         await context.bot.edit_message_text(chat_id=update.effective_chat.id, message_id=status_msg.message_id, text="جاري إرسال الفيديو...")
 
@@ -154,7 +157,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await update.message.reply_text("حدث خطأ أثناء تحميل الفيديو.")
+        await update.message.reply_text("حدث خطأ أثناء تحميل الفيديو. تأكد من صحة الرابط.")
         try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
         except: pass
 
@@ -169,7 +172,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("جاري تشغيل البوت...")
+    print("جاري تشغيل البوت الشامل...")
     application.run_polling()
 
 if __name__ == "__main__":
